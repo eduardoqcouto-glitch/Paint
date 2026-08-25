@@ -71,6 +71,10 @@ class Piece:
 class Pawn(Piece):
     name = "Pawn"
 
+    def __init__(self, color, position):
+        super().__init__(color, position)
+        self.en_passant_possible = False
+
     def attacked_squares(self):
         attacks = []
         file = self.position[0]
@@ -116,6 +120,15 @@ class Pawn(Piece):
                     if forward_move_2 not in game_board.peças and forward_move not in game_board.peças:
                         moves.append(forward_move_2)
 
+                if rank == 5:
+                    for adjacent_file in [chr(ord(file) - 1), chr(ord(file) + 1)]:
+                        if adjacent_file in "ABCDEFGH":
+                            adjacent_square = f"{adjacent_file}{rank}"
+                            if adjacent_square in game_board.peças:
+                                adjacent_piece = game_board.peças[adjacent_square]
+                                if isinstance(adjacent_piece, Pawn) and adjacent_piece.color == "B" and adjacent_piece.en_passant_possible:
+                                    moves.append(f"{adjacent_file}{rank + 1}")
+
 #       BLACK PAWNS
 
         else:
@@ -140,6 +153,15 @@ class Pawn(Piece):
                     forward_move_2 = f"{file}{rank - 2}"
                     if forward_move_2 not in game_board.peças and forward_move not in game_board.peças:
                         moves.append(forward_move_2)
+
+                if rank == 4:
+                    for adjacent_file in [chr(ord(file) - 1), chr(ord(file) + 1)]:
+                        if adjacent_file in "ABCDEFGH":
+                            adjacent_square = f"{adjacent_file}{rank}"
+                            if adjacent_square in game_board.peças:
+                                adjacent_piece = game_board.peças[adjacent_square]
+                                if isinstance(adjacent_piece, Pawn) and adjacent_piece.color == "W" and adjacent_piece.en_passant_possible:
+                                    moves.append(f"{adjacent_file}{rank - 1}")
 
         return moves
 
