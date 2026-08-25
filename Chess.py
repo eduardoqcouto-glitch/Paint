@@ -572,13 +572,23 @@ class Board:
         old_position = piece.position
 
         for move in piece.valid_moves():
-            captured_piece = self.peças.get(move)
+            # An en passant capture lands on an empty square, and the pawn
+            # it captures sits beside the mover rather than on that square.
+            is_en_passant = (
+                isinstance(piece, Pawn)
+                and move[0] != old_position[0]
+                and move not in self.peças
+            )
+            capture_square = f"{move[0]}{old_position[1]}" if is_en_passant else move
+            captured_piece = self.peças.get(capture_square)
 
             # Kings are never captured in chess.
             if isinstance(captured_piece, King):
                 continue
 
             del self.peças[old_position]
+            if is_en_passant:
+                del self.peças[capture_square]
             self.peças[move] = piece
             piece.position = move
 
@@ -589,12 +599,12 @@ class Board:
             piece.position = old_position
 
             if captured_piece is not None:
-                self.peças[move] = captured_piece
+                self.peças[capture_square] = captured_piece
 
             if not still_in_check:
                 legal_moves.append(move)
 
-        return legal_moves 
+        return legal_moves
 
     def check_move(self, color):
         # True means checkmate; False means either not in check or there is an escape.
@@ -683,12 +693,31 @@ while running:
 
                 if selected_piece and square in valid_moves:
                     # Move or capture
+                    is_en_passant = (
+                        isinstance(selected_piece, Pawn)
+                        and square[0] != selected_square[0]
+                        and square not in game_board.peças
+                    )
+                    if is_en_passant:
+                        captured_pawn_square = f"{square[0]}{selected_square[1]}"
+                        del game_board.peças[captured_pawn_square]
+
                     game_board.peças[square] = selected_piece
                     del game_board.peças[selected_square]
                     selected_piece.position = square
 
                     if isinstance(selected_piece, (King, Rook)):
                         selected_piece.has_moved = True
+
+                    # A pawn can only be captured en passant on the move right
+                    # after it double-steps, so clear the flag on every pawn
+                    # before possibly setting it again on this move's pawn.
+                    for other_piece in game_board.peças.values():
+                        if isinstance(other_piece, Pawn):
+                            other_piece.en_passant_possible = False
+
+                    if isinstance(selected_piece, Pawn) and abs(int(square[1]) - int(selected_square[1])) == 2:
+                        selected_piece.en_passant_possible = True
 
                     selected_piece = None
                     selected_square = None
@@ -737,6 +766,10 @@ while running:
 
                     selected_piece.has_moved = True
                     rook_piece.has_moved = True
+
+                    for other_piece in game_board.peças.values():
+                        if isinstance(other_piece, Pawn):
+                            other_piece.en_passant_possible = False
 
                     selected_piece = None
                     selected_square = None
