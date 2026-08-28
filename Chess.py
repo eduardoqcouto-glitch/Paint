@@ -100,20 +100,30 @@ class Pawn(Piece):
 
         if self.color == "W":
             if rank < 8:
+                promoting = rank == 7
                 forward_move = f"{file}{rank + 1}"
 
                 if file != "H":
                     right = f"{chr(ord(file) + 1)}{rank + 1}"
                     if right in game_board.peças and game_board.peças[right].color == "B":
+                        if promoting:
+                            moves += [f"{right}={p}" for p in "QRBN"]
+                        else:
                             moves.append(right)
 
                 if file != "A":
                     left = f"{chr(ord(file) - 1)}{rank + 1}"
                     if left in game_board.peças and game_board.peças[left].color == "B":
-                        moves.append(left)
+                        if promoting:
+                            moves += [f"{left}={p}" for p in "QRBN"]
+                        else:
+                            moves.append(left)
 
                 if forward_move not in game_board.peças:
-                    moves.append(forward_move)
+                    if promoting:
+                        moves += [f"{forward_move}={p}" for p in "QRBN"]
+                    else:
+                        moves.append(forward_move)
 
                 if rank == 2:
                     forward_move_2 = f"{file}{rank + 2}"
@@ -133,21 +143,31 @@ class Pawn(Piece):
 
         else:
             if rank > 1:
+                promoting = rank == 2
 
                 forward_move = f"{file}{rank - 1}"
 
                 if file != "H":
                     right = f"{chr(ord(file) + 1)}{rank - 1}"
                     if right in game_board.peças and game_board.peças[right].color == "W":
-                        moves.append(right)
+                        if promoting:
+                            moves += [f"{right}={p}" for p in "QRBN"]
+                        else:
+                            moves.append(right)
 
                 if file != "A":
                     left = f"{chr(ord(file) - 1)}{rank - 1}"
                     if left in game_board.peças and game_board.peças[left].color == "W":
-                        moves.append(left)
+                        if promoting:
+                            moves += [f"{left}={p}" for p in "QRBN"]
+                        else:
+                            moves.append(left)
 
                 if forward_move not in game_board.peças:
-                    moves.append(forward_move)
+                    if promoting:
+                        moves += [f"{forward_move}={p}" for p in "QRBN"]
+                    else:
+                        moves.append(forward_move)
 
                 if rank == 7:
                     forward_move_2 = f"{file}{rank - 2}"
@@ -487,6 +507,13 @@ class King(Piece):
 
         return moves
 
+# Piece classes and images to build when a pawn promotion choice is confirmed.
+PROMOTION_CLASSES = {"Q": Queen, "R": Rook, "B": Bishop, "N": Knight}
+PROMOTION_IMAGES = {
+    "W": {"Q": W_Queen, "R": W_Rook, "B": W_Bishop, "N": W_Knight},
+    "B": {"Q": B_Queen, "R": B_Rook, "B": B_Bishop, "N": B_Knight},
+}
+
 class Board:
 
     def __init__(self):
@@ -572,14 +599,18 @@ class Board:
         old_position = piece.position
 
         for move in piece.valid_moves():
+            # `move` may carry an annotation suffix (castling's "-O-O",
+            # promotion's "=Q") on top of the real destination square.
+            target_square = move[:2]
+
             # An en passant capture lands on an empty square, and the pawn
             # it captures sits beside the mover rather than on that square.
             is_en_passant = (
                 isinstance(piece, Pawn)
-                and move[0] != old_position[0]
-                and move not in self.peças
+                and target_square[0] != old_position[0]
+                and target_square not in self.peças
             )
-            capture_square = f"{move[0]}{old_position[1]}" if is_en_passant else move
+            capture_square = f"{target_square[0]}{old_position[1]}" if is_en_passant else target_square
             captured_piece = self.peças.get(capture_square)
 
             # Kings are never captured in chess.
@@ -589,12 +620,12 @@ class Board:
             del self.peças[old_position]
             if is_en_passant:
                 del self.peças[capture_square]
-            self.peças[move] = piece
-            piece.position = move
+            self.peças[target_square] = piece
+            piece.position = target_square
 
             still_in_check = self.still_in_check(piece.color)
 
-            del self.peças[move]
+            del self.peças[target_square]
             self.peças[old_position] = piece
             piece.position = old_position
 
@@ -642,6 +673,19 @@ def mouse_to_square(mouse_pos):
         return f"{file}{rank}"
     return None
 
+def get_promotion_choice_rects(square, color):
+    # Lays the four promotion choices out on the promoting file, stacked
+    # toward that color's own side of the board (e.g. White promoting on
+    # A8 gets choices on A8, A7, A6, A5).
+    file = square[0]
+    rank = int(square[1])
+    step = -1 if color == "W" else 1
+
+    return [
+        (letter, get_square_rect(f"{file}{rank + i * step}"))
+        for i, letter in enumerate("QRBN")
+    ]
+
 running = True
 game_board = Board()
 
@@ -652,6 +696,7 @@ clock = pygame.time.Clock()
 selected_piece = None
 selected_square = None
 valid_moves = []
+pending_promotion = None
 
 while running:
     tela.fill((30, 34, 42))
@@ -683,12 +728,58 @@ while running:
 
         tela.blit(piece.image, piece_rect)
 
+    if pending_promotion:
+        color = pending_promotion["piece"].color
+        for letter, rect in get_promotion_choice_rects(pending_promotion["to"], color):
+            pygame.draw.rect(tela, (90, 90, 90), rect)
+
+            image = PROMOTION_IMAGES[color][letter]
+            image_rect = image.get_rect()
+            image_rect.midbottom = rect.midbottom
+            tela.blit(image, image_rect)
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # Left mouse button
+            if event.button == 1 and pending_promotion:  # Left mouse button
+                color = pending_promotion["piece"].color
+                chosen_letter = None
+
+                for letter, rect in get_promotion_choice_rects(pending_promotion["to"], color):
+                    if rect.collidepoint(event.pos):
+                        chosen_letter = letter
+                        break
+
+                if chosen_letter:
+                    from_square = pending_promotion["from"]
+                    to_square = pending_promotion["to"]
+
+                    del game_board.peças[from_square]
+                    new_piece = PROMOTION_CLASSES[chosen_letter](color, to_square)
+                    if isinstance(new_piece, Rook):
+                        # This is a freshly created piece, not the original
+                        # rook, so it can never take part in castling.
+                        new_piece.has_moved = True
+                    game_board.peças[to_square] = new_piece
+
+                    for other_piece in game_board.peças.values():
+                        if isinstance(other_piece, Pawn):
+                            other_piece.en_passant_possible = False
+
+                    pending_promotion = None
+                    turn = "B" if turn == "W" else "W"
+
+                    if game_board.check_move(turn):
+                        print("CHECKMATE!", "White wins!" if turn == "B" else "Black wins!")
+                    elif game_board.still_in_check(turn):
+                        print("CHECK!")
+                else:
+                    # Clicked away from the choices: cancel the promotion.
+                    pending_promotion = None
+
+            elif event.button == 1:  # Left mouse button
                 square = mouse_to_square(event.pos)
 
                 if selected_piece and square in valid_moves:
@@ -729,11 +820,11 @@ while running:
                     elif game_board.still_in_check(turn):
                         print("CHECK!")
                 elif selected_piece and square in [m[:2] for m in valid_moves if "-O-O" in m]:
-                    # Handle castling
+  
                     matching_move = next(m for m in valid_moves if m[:2] == square and "-O-O" in m)
 
                     if "-O-O-O" in matching_move:
-                        # Queenside castle
+              
                         rank = selected_piece.position[1]
                         new_king_square = f"C{rank}"
                         new_rook_square = f"D{rank}"
@@ -749,7 +840,7 @@ while running:
                         rook_piece.position = new_rook_square
 
                     else:
-                        # Kingside castle
+              
                         rank = selected_piece.position[1]
                         new_king_square = f"G{rank}"
                         new_rook_square = f"F{rank}"
@@ -780,6 +871,17 @@ while running:
                         print("CHECKMATE!", "White wins!" if turn == "B" else "Black wins!")
                     elif game_board.still_in_check(turn):
                         print("CHECK!")
+
+                elif selected_piece and square in [m[:2] for m in valid_moves if "=" in m]:
+                    # A promotion move: wait for the player to pick a piece.
+                    pending_promotion = {
+                        "from": selected_square,
+                        "to": square,
+                        "piece": selected_piece,
+                    }
+                    selected_piece = None
+                    selected_square = None
+                    valid_moves = []
 
                 elif square in game_board.peças:
                     if game_board.peças[square].color == turn:
