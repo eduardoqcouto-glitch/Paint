@@ -67,6 +67,8 @@ class Piece:
     
         self.image = pygame.transform.scale_by(pygame.image.load(f"Peças/{self.color}_{self.name}.png"), 3.0)
 
+    def __str__(self):
+        return f"{self.name}"
     
 class Pawn(Piece):
     name = "Pawn"
@@ -517,6 +519,8 @@ PROMOTION_IMAGES = {
 class Board:
 
     def __init__(self):
+        self.moves = []
+        self.positions = []
         self.peças = {
             # Peças brancas (linha 1)
             "A1": Rook("W", "A1"),
@@ -558,6 +562,24 @@ class Board:
             "G8": Knight("B", "G8"),
             "H8": Rook("B", "H8"),
         }
+
+    def insufficient_material(self):
+        W = []
+        B = []
+
+        for p in self.peças.values():
+            if p.color == "W":
+                W.append(p.name[0] if p.name != "Knight" else "N")
+            else:
+                B.append(p.name[0] if p.name != "Knight" else "N")
+
+        W = "".join(sorted(W))
+        B = "".join(sorted(B))
+
+        if W in ["K", "KN", "KB"] and B in ["K", "KN", "KB"]:
+            return True
+
+        return False
 
     def stalemate(self, color):
         valid_moves = []
@@ -637,6 +659,9 @@ class Board:
 
         return legal_moves
 
+    # def repetition_draw(self):
+        
+
     def check_move(self, color):
         # True means checkmate; False means either not in check or there is an escape.
         if not self.still_in_check(color):
@@ -674,9 +699,6 @@ def mouse_to_square(mouse_pos):
     return None
 
 def get_promotion_choice_rects(square, color):
-    # Lays the four promotion choices out on the promoting file, stacked
-    # toward that color's own side of the board (e.g. White promoting on
-    # A8 gets choices on A8, A7, A6, A5).
     file = square[0]
     rank = int(square[1])
     step = -1 if color == "W" else 1
@@ -738,11 +760,13 @@ while running:
             image_rect.midbottom = rect.midbottom
             tela.blit(image, image_rect)
 
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
+            opposing_pieces = len([piece for piece in game_board.peças.values() if  piece.color != turn])
             if event.button == 1 and pending_promotion:  # Left mouse button
                 color = pending_promotion["piece"].color
                 chosen_letter = None
@@ -751,7 +775,7 @@ while running:
                     if rect.collidepoint(event.pos):
                         chosen_letter = letter
                         break
-
+                
                 if chosen_letter:
                     from_square = pending_promotion["from"]
                     to_square = pending_promotion["to"]
@@ -801,8 +825,7 @@ while running:
                         selected_piece.has_moved = True
 
                     # A pawn can only be captured en passant on the move right
-                    # after it double-steps, so clear the flag on every pawn
-                    # before possibly setting it again on this move's pawn.
+
                     for other_piece in game_board.peças.values():
                         if isinstance(other_piece, Pawn):
                             other_piece.en_passant_possible = False
@@ -819,8 +842,9 @@ while running:
                         print("CHECKMATE!", "White wins!" if turn == "B" else "Black wins!")
                     elif game_board.still_in_check(turn):
                         print("CHECK!")
+                    
                 elif selected_piece and square in [m[:2] for m in valid_moves if "-O-O" in m]:
-  
+                    # CASTLE
                     matching_move = next(m for m in valid_moves if m[:2] == square and "-O-O" in m)
 
                     if "-O-O-O" in matching_move:
@@ -884,15 +908,40 @@ while running:
                     valid_moves = []
 
                 elif square in game_board.peças:
+                    # SELECT A PIECE
                     if game_board.peças[square].color == turn:
                         selected_piece = game_board.peças[square]
                         selected_square = square
+                        square = None
                         valid_moves = game_board.legal_moves_for(selected_piece)
 
                 else:
+                    # NO PIECES SELECTED
                     selected_piece = None
                     selected_square = None
+                    square = None
                     valid_moves = []
+
+                if square:
+                    new_opposing_pieces = len([piece for piece in game_board.peças.values() if  piece.color == turn])
+                    piece_name = game_board.peças[square].name[0]
+                    chess_notation = f"{piece_name if piece_name != 'P' else ''}{'x' if new_opposing_pieces < opposing_pieces else ''}{square}"
+                    game_board.moves.append(chess_notation)
+                    print(game_board.moves)
+                    print("".join(sorted([f"{p.color}{p.position}{p.name[0] if p.name != 'Knight' else 'N'}" for p in game_board.peças.values()])))
+                    position_str = "".join(sorted([f"{p.color}{p.position}{p.name[0] if p.name != 'Knight' else 'N'}" for p in game_board.peças.values()]))
+                    game_board.positions.append(position_str)
+                    # REPETITION
+                    if game_board.positions.count(position_str) >= 3:
+                        print("DRAW BY REPETITION!")
+                        running = False
+
+                    # INSUFFICIENT MATERIAL
+                    if game_board.insufficient_material():
+                        print("DRAW BY INSUFFICIENT MATERIAL!")
+                        running = False
+
+
     pygame.display.flip()
     clock.tick(183248328831482843)
 
