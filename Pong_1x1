@@ -1,0 +1,182 @@
+import pygame
+import math
+import random
+import time
+
+pygame.init()
+
+tela = pygame.display.set_mode((1250, 650))
+paint = pygame.Surface((1250, 650), pygame.SRCALPHA)
+pygame.display.set_caption("Pong")
+font = pygame.font.SysFont("comicsansms", 25)
+font_morte = pygame.font.SysFont("comicsansms", 50)
+
+tela.fill((0, 0, 0))
+running = True
+
+class Ball:
+    def __init__(self, x=300, y=300, dx=1, dy=1):
+        self.y = y
+        self.x = x
+        self.dx = dx
+        self.dy = dy
+        self.radius = 5
+
+        self.v = 8
+        self.theta = 45
+
+        self.Vx = self.v * math.cos(math.radians(self.theta))
+        self.Vy = self.v * math.sin(math.radians(self.theta))
+
+class Player(pygame.Rect):
+    def __init__(self, x):
+        super().__init__(x, 300, 10, 100)        
+
+clock = pygame.time.Clock()
+ball = Ball()
+player1 = Player(x = 100)
+player2 = Player(x = 1150)
+
+balls = [ball]
+frames = 0
+seconds = 0
+score_p1 = 0
+score_p2 = 0
+
+while running:                                                 
+    tela.fill((0, 0, 0))
+
+    score_text = font.render(f"{score_p1} x {score_p2}", True, (255, 255, 255))
+    tela.blit(score_text, (1250 // 2 - score_text.get_width() // 2, 10))
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        
+    keys = pygame.key.get_pressed()
+
+    player_speed = int(max(10, ball.v))
+
+    if keys[pygame.K_w]:
+        player1.y -= player_speed
+    if keys[pygame.K_s]:
+        player1.y += player_speed
+    if keys[pygame.K_UP]:
+        player2.y -= player_speed
+    if keys[pygame.K_DOWN]:
+        player2.y += player_speed
+
+    if player1.y < 0:
+        player1.y = 0
+    if player1.y > 550:
+        player1.y = 550
+    if player2.y < 0:
+        player2.y = 0
+    if player2.y > 550:
+        player2.y = 550
+
+    pygame.draw.rect(tela, (255, 255, 255), player1)
+    pygame.draw.rect(tela, (255, 255, 255), player2)
+
+    ball_hitbox = pygame.Rect(ball.x - ball.radius, ball.y - ball.radius, 2 * ball.radius, 2 * ball.radius)
+    pygame.draw.circle(tela, (255, 255, 255), (ball.x, ball.y), ball.radius)
+    pygame.Rect(ball.x, ball.y, 9, 9)
+
+    if ball.v < 5:
+        ball.v = 5
+        ball.Vx = ball.v * math.cos(math.radians(ball.theta))
+        ball.Vy = ball.v * math.sin(math.radians(ball.theta))
+
+
+    if (ball.y < 10 and ball.dy == -1) or (ball.y > 640 and ball.dy == 1):
+
+        ball.dy *= -1
+
+        ball.theta = random.randint(30, 60)
+
+        ball.Vx = ball.v * math.cos(math.radians(ball.theta))
+        ball.Vy = ball.v * math.sin(math.radians(ball.theta))
+
+
+    if ball.x < 10:
+        score_p2 += 1
+        ball = Ball(x=300, y=300, dx=1, dy=random.choice([-1, 1]))
+        time.sleep(1)
+
+    if ball.x > 1240:
+        score_p1 += 1
+        ball = Ball(x=950, y=300, dx=-1, dy=random.choice([-1, 1]))
+        time.sleep(1)
+
+    steps = max(1, math.ceil(max(abs(ball.Vx), abs(ball.Vy))))
+
+    for _ in range(steps):
+
+        ball.x += (ball.Vx * ball.dx) / steps
+        ball.y += (ball.Vy * ball.dy) / steps
+
+        ball_hitbox = pygame.Rect(0, 0, 10, 10)
+        ball_hitbox.center = (round(ball.x), round(ball.y))
+
+        
+        if ball_hitbox.colliderect(player1) and ball.dx == -1:
+            ball.dx = 1
+
+            offset = ball.y - player1.centery
+            relative = offset / (player1.height / 2)
+            relative = max(-1, min(1, relative))
+
+            min_theta = 10
+            max_theta = 75
+            
+            ball.theta = min_theta + abs(relative) * (max_theta - min_theta)
+
+            if relative < 0:
+                ball.dy = -1
+            else:
+                ball.dy = 1
+
+            ball.Vx = ball.v * math.cos(math.radians(ball.theta))
+            ball.Vy = ball.v * math.sin(math.radians(ball.theta))
+
+            break
+
+        elif ball_hitbox.colliderect(player2) and ball.dx == 1:
+            ball.dx = -1
+
+            offset = ball.y - player2.centery
+            relative = offset / (player2.height / 2)
+            relative = max(-1, min(1, relative))
+
+            min_theta = 10
+            max_theta = 75
+            
+            ball.theta = min_theta + abs(relative) * (max_theta - min_theta)
+
+            if relative < 0:
+                ball.dy = -1
+            else:
+                ball.dy = 1
+
+            ball.Vx = ball.v * math.cos(math.radians(ball.theta))
+            ball.Vy = ball.v * math.sin(math.radians(ball.theta))
+
+            break
+
+    if frames % 120 == 0:
+
+        ball.v *= 1.02
+        print(f"{ball.v:.2f}")
+
+        ball.Vx = ball.v * math.cos(math.radians(ball.theta))
+        ball.Vy = ball.v * math.sin(math.radians(ball.theta))
+
+    pygame.display.flip()
+    frames += 1
+
+    if frames % 60 == 0:
+        seconds += 1
+
+    clock.tick(60)
+
+pygame.quit()
